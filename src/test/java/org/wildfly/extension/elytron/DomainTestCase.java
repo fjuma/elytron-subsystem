@@ -60,11 +60,17 @@ public class DomainTestCase extends AbstractSubsystemTest {
         new ClassLoadingAttributeDefinitionsMock(); // mock classloader obtaining
         String subsystemXml = "<subsystem xmlns=\"" + ElytronExtension.NAMESPACE + "\">\n" +
                 "    <security-domains>\n" +
-                "        <security-domain name=\"MyDomain\" default-realm=\"FileRealm\" realm-mapper=\"MyRealmMapper\" permission-mapper=\"MyPermissionMapper\"  pre-realm-name-rewriter=\"NameRewriterXY\" post-realm-name-rewriter=\"NameRewriterYU\">\n" +
+                "        <security-domain name=\"MyDomain\" default-realm=\"FileRealm\" realm-mapper=\"MyRealmMapper\" permission-mapper=\"MyPermissionMapper\"  pre-realm-name-rewriter=\"NameRewriterXY\" post-realm-name-rewriter=\"NameRewriterYU\" trusted-security-domains=\"X500Domain Domain1 Domain2\">\n" +
                 "            <realm name=\"FileRealm\" role-decoder=\"MyRoleDecoder\" role-mapper=\"MyRoleMapper\"/>\n" +
                 "            <realm name=\"PropRealm\" name-rewriter=\"NameRewriterRealmRemover\"/>\n" +
                 "        </security-domain>\n" +
-                "        <security-domain name=\"X500Domain\" default-realm=\"FileRealm\" principal-decoder=\"MyX500PrincipalDecoder\">\n" +
+                "        <security-domain name=\"X500Domain\" default-realm=\"FileRealm\" principal-decoder=\"MyX500PrincipalDecoder\" trusted-security-domains=\"MyDomain Domain1 X500Domain\">\n" +
+                "            <realm name=\"FileRealm\"/>\n" +
+                "        </security-domain>\n" +
+                "        <security-domain name=\"Domain1\" default-realm=\"FileRealm\" principal-decoder=\"MyX500PrincipalDecoder\" trusted-security-domains=\"MyDomain Domain2\">\n" +
+                "            <realm name=\"FileRealm\"/>\n" +
+                "        </security-domain>\n" +
+                "        <security-domain name=\"Domain2\" default-realm=\"FileRealm\" principal-decoder=\"MyX500PrincipalDecoder\">\n" +
                 "            <realm name=\"FileRealm\"/>\n" +
                 "        </security-domain>\n" +
                 "    </security-domains>\n" +
@@ -167,6 +173,47 @@ public class DomainTestCase extends AbstractSubsystemTest {
         Assert.assertNotNull(domain);
 
         Assert.assertTrue(domain.mapPrincipal(new X500Principal("cn=firstUser,ou=group")).exists());
+
+    }
+
+    @Test
+    public void testTrustedSecurityDomains() throws Exception {
+        init();
+        ServiceName serviceName = Capabilities.SECURITY_DOMAIN_RUNTIME_CAPABILITY.getCapabilityServiceName("MyDomain");
+        SecurityDomain myDomain = (SecurityDomain) services.getContainer().getService(serviceName).getValue();
+        Assert.assertNotNull(myDomain);
+
+        serviceName = Capabilities.SECURITY_DOMAIN_RUNTIME_CAPABILITY.getCapabilityServiceName("X500Domain");
+        SecurityDomain x500Domain = (SecurityDomain) services.getContainer().getService(serviceName).getValue();
+        Assert.assertNotNull(x500Domain);
+
+        serviceName = Capabilities.SECURITY_DOMAIN_RUNTIME_CAPABILITY.getCapabilityServiceName("Domain1");
+        SecurityDomain domain1 = (SecurityDomain) services.getContainer().getService(serviceName).getValue();
+        Assert.assertNotNull(domain1);
+
+        serviceName = Capabilities.SECURITY_DOMAIN_RUNTIME_CAPABILITY.getCapabilityServiceName("Domain2");
+        SecurityDomain domain2 = (SecurityDomain) services.getContainer().getService(serviceName).getValue();
+        Assert.assertNotNull(domain2);
+
+        Assert.assertTrue(myDomain.trustsDomain(x500Domain));
+        Assert.assertTrue(myDomain.trustsDomain(domain1));
+        Assert.assertTrue(myDomain.trustsDomain(domain2));
+        Assert.assertTrue(myDomain.trustsDomain(myDomain));
+
+        Assert.assertTrue(x500Domain.trustsDomain(myDomain));
+        Assert.assertTrue(x500Domain.trustsDomain(domain1));
+        Assert.assertFalse(x500Domain.trustsDomain(domain2));
+        Assert.assertTrue(x500Domain.trustsDomain(x500Domain));
+
+        Assert.assertTrue(domain1.trustsDomain(myDomain));
+        Assert.assertFalse(domain1.trustsDomain(x500Domain));
+        Assert.assertTrue(domain1.trustsDomain(domain2));
+        Assert.assertTrue(domain1.trustsDomain(domain1));
+
+        Assert.assertFalse(domain2.trustsDomain(myDomain));
+        Assert.assertFalse(domain2.trustsDomain(x500Domain));
+        Assert.assertFalse(domain2.trustsDomain(domain1));
+        Assert.assertTrue(domain2.trustsDomain(domain2));
 
     }
 
