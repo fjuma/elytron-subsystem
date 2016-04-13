@@ -26,6 +26,7 @@ import org.jboss.msc.service.ServiceName;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.wildfly.security.auth.permission.LoginPermission;
 import org.wildfly.security.auth.principal.NamePrincipal;
 import org.wildfly.security.auth.server.MechanismConfiguration;
 import org.wildfly.security.auth.server.MechanismRealmConfiguration;
@@ -34,6 +35,7 @@ import org.wildfly.security.auth.server.SecurityIdentity;
 import org.wildfly.security.auth.server.ServerAuthenticationContext;
 import org.wildfly.security.authz.PermissionMapper;
 import org.wildfly.security.authz.Roles;
+import org.wildfly.security.evidence.SecurityIdentityEvidence;
 import org.wildfly.security.permission.PermissionVerifier;
 
 import javax.security.auth.x500.X500Principal;
@@ -60,7 +62,7 @@ public class DomainTestCase extends AbstractSubsystemTest {
         new ClassLoadingAttributeDefinitionsMock(); // mock classloader obtaining
         String subsystemXml = "<subsystem xmlns=\"" + ElytronExtension.NAMESPACE + "\">\n" +
                 "    <security-domains>\n" +
-                "        <security-domain name=\"MyDomain\" default-realm=\"FileRealm\" realm-mapper=\"MyRealmMapper\" permission-mapper=\"MyPermissionMapper\"  pre-realm-name-rewriter=\"NameRewriterXY\" post-realm-name-rewriter=\"NameRewriterYU\" trusted-security-domains=\"X500Domain Domain1 Domain2\">\n" +
+                "        <security-domain name=\"MyDomain\" default-realm=\"FileRealm\" realm-mapper=\"MyRealmMapper\" permission-mapper=\"MyPermissionMapper\"  pre-realm-name-rewriter=\"NameRewriterXY\" post-realm-name-rewriter=\"NameRewriterYU\" trusted-security-domains=\"X500Domain Domain1 Domain2 AnotherDomain\">\n" +
                 "            <realm name=\"FileRealm\" role-decoder=\"MyRoleDecoder\" role-mapper=\"MyRoleMapper\"/>\n" +
                 "            <realm name=\"PropRealm\" name-rewriter=\"NameRewriterRealmRemover\"/>\n" +
                 "        </security-domain>\n" +
@@ -72,6 +74,9 @@ public class DomainTestCase extends AbstractSubsystemTest {
                 "        </security-domain>\n" +
                 "        <security-domain name=\"Domain2\" default-realm=\"FileRealm\" principal-decoder=\"MyX500PrincipalDecoder\">\n" +
                 "            <realm name=\"FileRealm\"/>\n" +
+                "        </security-domain>\n" +
+                "        <security-domain name=\"AnotherDomain\" default-realm=\"PropRealm\" permission-mapper=\"LoginPermissionMapper\" trusted-security-domains=\"X500Domain MyDomain\">\n" +
+                "            <realm name=\"PropRealm\"/>\n" +
                 "        </security-domain>\n" +
                 "    </security-domains>\n" +
                 "    <security-realms>\n" +
@@ -95,6 +100,7 @@ public class DomainTestCase extends AbstractSubsystemTest {
                 "            <role-mapper name=\"RoleSuffixer\"/>\n" +
                 "        </aggregate-role-mapper>\n" +
                 "        <custom-permission-mapper name=\"MyPermissionMapper\" class-name=\"org.wildfly.extension.elytron.DomainTestCase$MyPermissionMapper\"/>\n" +
+                "        <custom-permission-mapper name=\"LoginPermissionMapper\" class-name=\"org.wildfly.extension.elytron.DomainTestCase$LoginPermissionMapper\"/>\n" +
                 "        <x500-attribute-principal-decoder name=\"MyX500PrincipalDecoder\" oid=\"2.5.4.3\" joiner=\",\" maximum-segments=\"6\" />\n" +
                 "    </mappers>\n" +
                 "</subsystem>\n";
@@ -177,7 +183,7 @@ public class DomainTestCase extends AbstractSubsystemTest {
     }
 
     @Test
-    public void testTrustedSecurityDomains() throws Exception {
+    public void testREMOVETrustedSecurityDomains() throws Exception {
         init();
         ServiceName serviceName = Capabilities.SECURITY_DOMAIN_RUNTIME_CAPABILITY.getCapabilityServiceName("MyDomain");
         SecurityDomain myDomain = (SecurityDomain) services.getContainer().getService(serviceName).getValue();
@@ -217,6 +223,32 @@ public class DomainTestCase extends AbstractSubsystemTest {
 
     }
 
+    @Test
+    public void testTrustedSecurityDomains() throws Exception {
+        init();
+        ServiceName serviceName = Capabilities.SECURITY_DOMAIN_RUNTIME_CAPABILITY.getCapabilityServiceName("MyDomain");
+        SecurityDomain myDomain = (SecurityDomain) services.getContainer().getService(serviceName).getValue();
+        Assert.assertNotNull(myDomain);
+
+        serviceName = Capabilities.SECURITY_DOMAIN_RUNTIME_CAPABILITY.getCapabilityServiceName("X500Domain");
+        SecurityDomain x500Domain = (SecurityDomain) services.getContainer().getService(serviceName).getValue();
+        Assert.assertNotNull(x500Domain);
+
+        serviceName = Capabilities.SECURITY_DOMAIN_RUNTIME_CAPABILITY.getCapabilityServiceName("AnotherDomain");
+        SecurityDomain anotherDomain = (SecurityDomain) services.getContainer().getService(serviceName).getValue();
+        Assert.assertNotNull(anotherDomain);
+
+        // MyDomain and AnotherDomain don't have a common realm but MyDomain trusts AnotherDomain
+        SecurityIdentity establishedIdentity = getIdentityFromDomain(myDomain, "firstUser");
+        ServerAuthenticationContext authenticationContext = anotherDomain.createNewAuthenticationContext();
+        Assert.assertTrue(authenticationContext.verifyEvidence(new SecurityIdentityEvidence(establishedIdentity)));
+
+        // X500Domain and AnotherDomain don't have a common realm and X500Domain does not trust AnotherDomain
+        establishedIdentity = getIdentityFromDomain(anotherDomain, "firstUser");
+        authenticationContext = x500Domain.createNewAuthenticationContext();
+        Assert.assertFalse(authenticationContext.verifyEvidence(new SecurityIdentityEvidence(establishedIdentity)));
+    }
+
     // classloader obtaining must be mocked in AbstractSubsystemTest to load classes from testsuite
     private static class ClassLoadingAttributeDefinitionsMock extends MockUp<ClassLoadingAttributeDefinitions> {
         @Mock
@@ -232,4 +264,17 @@ public class DomainTestCase extends AbstractSubsystemTest {
         }
     }
 
+    public static class LoginPermissionMapper implements PermissionMapper {
+        @Override
+        public PermissionVerifier mapPermissions(Principal principal, Roles roles) {
+            return PermissionVerifier.from(new LoginPermission());
+        }
+    }
+
+    private SecurityIdentity getIdentityFromDomain(final SecurityDomain securityDomain, final String userName) throws Exception {
+        final ServerAuthenticationContext authenticationContext = securityDomain.createNewAuthenticationContext();
+        authenticationContext.setAuthenticationName(userName);
+        authenticationContext.succeed();
+        return authenticationContext.getAuthorizedIdentity();
+    }
 }
