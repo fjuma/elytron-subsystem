@@ -45,6 +45,7 @@
         <version.org.jboss.logging.tools>2.0.1.Final</version.org.jboss.logging.tools>
         <version.org.jboss.msc.jboss-msc>1.2.6.Final</version.org.jboss.msc.jboss-msc>
         <version.org.jboss.staxmapper>1.2.0.Final</version.org.jboss.staxmapper>
+        <version.org.jboss.threads>2.2.1.Final</version.org.jboss.threads>
         <version.org.wildfly.checkstyle-config>1.0.4.Final</version.org.wildfly.checkstyle-config>
         <version.org.wildfly.common>1.1.0.Final</version.org.wildfly.common>
         <version.com.puppycrawl.tools.checkstyle>6.0</version.com.puppycrawl.tools.checkstyle>
@@ -283,6 +284,19 @@
         </dependency>
 
         <dependency>
+            <groupId>org.wildfly.core</groupId>
+            <artifactId>wildfly-server</artifactId>
+            <version>${version.wildfly.core}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <artifactId>*</artifactId>
+                    <groupId>*</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
             <groupId>org.wildfly.security</groupId>
             <artifactId>wildfly-elytron</artifactId>
             <version>${version.elytron}</version>
@@ -313,6 +327,13 @@
             <groupId>org.jboss.msc</groupId>
             <artifactId>jboss-msc</artifactId>
             <version>${version.org.jboss.msc.jboss-msc}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jboss.threads</groupId>
+            <artifactId>jboss-threads</artifactId>
+            <version>${version.org.jboss.threads}</version>
             <scope>provided</scope>
         </dependency>
 

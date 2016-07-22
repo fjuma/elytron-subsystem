@@ -17,10 +17,20 @@
  */
 package org.wildfly.extension.elytron;
 
+import static java.security.AccessController.doPrivileged;
+
 import mockit.Mock;
 import mockit.MockUp;
+
+import org.jboss.as.server.Services;
 import org.jboss.as.subsystem.test.AdditionalInitialization;
 import org.jboss.as.subsystem.test.ControllerInitializer;
+import org.jboss.msc.service.Service;
+import org.jboss.msc.service.ServiceTarget;
+import org.jboss.msc.service.StartContext;
+import org.jboss.msc.service.StartException;
+import org.jboss.msc.service.StopContext;
+import org.jboss.threads.JBossThreadFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -31,6 +41,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.security.PrivilegedAction;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 class TestEnvironment extends AdditionalInitialization {
 
@@ -54,6 +70,16 @@ class TestEnvironment extends AdditionalInitialization {
         }
 
         return initializer;
+    }
+
+    @Override
+    protected void addExtraServices(ServiceTarget target) {
+        // Needed by the CoreScheduledExecutorService
+        final ThreadFactory threadFactory = doPrivileged((PrivilegedAction<ThreadFactory>) () ->
+           new JBossThreadFactory(new ThreadGroup("TestServerExecutorService ThreadGroup"), Boolean.FALSE, null, "%G - %t", null, null)
+        );
+        final TestServerExecutorService testServerExecutorService = new TestServerExecutorService(threadFactory);
+        target.addService(Services.JBOSS_SERVER_EXECUTOR, testServerExecutorService).install();
     }
 
     public static LdapService startLdapService() {
@@ -96,5 +122,46 @@ class TestEnvironment extends AdditionalInitialization {
 
     static void mockCallerModuleClassloader() {
         new ClassLoadingAttributeDefinitionsMock();
+    }
+
+    private static class TestServerExecutorService implements Service<ExecutorService> {
+
+        private final ThreadFactory threadFactory;
+        private ExecutorService executorService;
+
+        private TestServerExecutorService(ThreadFactory threadFactory) {
+            this.threadFactory = threadFactory;
+        }
+
+        @Override
+        public synchronized void start(StartContext context) throws StartException {
+            executorService = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 20L, TimeUnit.SECONDS,
+                    new SynchronousQueue<Runnable>(), threadFactory);
+        }
+
+        @Override
+        public synchronized void stop(final StopContext context) {
+
+            if (executorService != null) {
+                context.asynchronous();
+                Thread executorShutdown = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            executorService.shutdown();
+                        } finally {
+                            executorService = null;
+                            context.complete();
+                        }
+                    }
+                }, "TestServerExecutorService Shutdown Thread");
+                executorShutdown.start();
+            }
+        }
+
+        @Override
+        public synchronized ExecutorService getValue() throws IllegalStateException, IllegalArgumentException {
+            return executorService;
+        }
     }
 }

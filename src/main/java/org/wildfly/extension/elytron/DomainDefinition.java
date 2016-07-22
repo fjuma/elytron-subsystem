@@ -33,6 +33,7 @@ import static org.wildfly.extension.elytron.ElytronExtension.asStringIfDefined;
 import static org.wildfly.extension.elytron._private.ElytronSubsystemMessages.ROOT_LOGGER;
 
 import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
 
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.ObjectListAttributeDefinition;
@@ -260,6 +261,7 @@ class DomainDefinition extends SimpleResourceDefinition {
         }
 
         commonDependencies(domainBuilder);
+        domainBuilder.addDependency(CoreService.CORE_SCHEDULED_EXECUTOR_SERVICE_NAME, ScheduledExecutorService.class, domain.getScheduledExecutorServiceInjector());
         return domainBuilder.install();
     }
 

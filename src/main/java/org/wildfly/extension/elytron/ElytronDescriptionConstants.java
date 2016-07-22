@@ -78,6 +78,7 @@ interface ElytronDescriptionConstants {
     String CONSTANT_PRINCIPAL_DECODER = "constant-principal-decoder";
     String CONSTANT_ROLE_MAPPER = "constant-role-mapper";
     String CORE_SERVICE = "core-service";
+    String CORE_SCHEDULED_EXECUTOR_SERVICE = "core-scheduled-executor-service";
     String CREATION_DATE = "creation-date";
     String CREATION_TIME = "creation-time";
     String CREDENTIAL = "credential";

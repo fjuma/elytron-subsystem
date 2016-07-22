@@ -27,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 
 import org.jboss.as.controller.OperationFailedException;
@@ -76,6 +77,7 @@ class DomainService implements Service<SecurityDomain> {
     private final InjectedValue<RealmMapper> realmMapperInjector = new InjectedValue<>();
     private final InjectedValue<PermissionMapper> permissionMapperInjector = new InjectedValue<>();
     private final HashSet<SecurityDomain> trustedSecurityDomains = new HashSet<>();
+    private final InjectedValue<ScheduledExecutorService> scheduledExecutorServiceInjector = new InjectedValue<>();
 
     DomainService(final String name, final String defaultRealm, final List<String> trustedSecurityDomainsList) {
         this.name = name;
@@ -153,6 +155,10 @@ class DomainService implements Service<SecurityDomain> {
         return createRoleMapperInjector(name);
     }
 
+    Injector<ScheduledExecutorService> getScheduledExecutorServiceInjector() {
+        return scheduledExecutorServiceInjector;
+    }
+
     @Override
     public void start(StartContext context) throws StartException {
         SecurityDomain.Builder builder = SecurityDomain.builder();
@@ -200,6 +206,9 @@ class DomainService implements Service<SecurityDomain> {
         }
 
         builder.setTrustedSecurityDomainPredicate(trustedSecurityDomains::contains);
+
+        ScheduledExecutorService scheduledExecutorService = scheduledExecutorServiceInjector.getValue();
+        builder.setScheduledExecutorService(scheduledExecutorService);
 
         securityDomain = builder.build();
 
